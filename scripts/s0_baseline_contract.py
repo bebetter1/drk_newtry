@@ -14,6 +14,7 @@ import importlib.util
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -42,6 +43,8 @@ from utils.s0_baseline_contract import (  # noqa: E402
 
 
 EXPECTED_BASELINE_COMMIT = "e9a3f557abde43e28ece3b648a337822d183dcb6"
+SUPPORTED_TORCH_RELEASE = "2.2.2"
+SUPPORTED_TORCH_CUDA = {"11.8", "12.1"}
 
 
 def _run_text(command: Sequence[str]) -> Dict[str, Any]:
@@ -51,6 +54,41 @@ def _run_text(command: Sequence[str]) -> Dict[str, Any]:
         "returncode": completed.returncode,
         "stdout": completed.stdout.strip(),
         "stderr": completed.stderr.strip(),
+    }
+
+
+def validate_runtime_versions(
+    torch_version: str, torch_cuda: Optional[str], nvcc_output: str
+) -> Dict[str, str]:
+    """Validate a supported PyTorch build and a compatible CUDA compiler."""
+
+    torch_release = str(torch_version).split("+", 1)[0]
+    if torch_release != SUPPORTED_TORCH_RELEASE:
+        raise ContractError(
+            "Stage 0 requires torch {}; found {}".format(
+                SUPPORTED_TORCH_RELEASE, torch_version
+            )
+        )
+    if torch_cuda not in SUPPORTED_TORCH_CUDA:
+        raise ContractError(
+            "Stage 0 supports torch CUDA builds {}; found {}".format(
+                sorted(SUPPORTED_TORCH_CUDA), torch_cuda
+            )
+        )
+    match = re.search(r"release\s+(\d+\.\d+)", nvcc_output)
+    if match is None:
+        raise ContractError("could not parse the CUDA version from nvcc --version")
+    nvcc_cuda = match.group(1)
+    if nvcc_cuda.split(".", 1)[0] != torch_cuda.split(".", 1)[0]:
+        raise ContractError(
+            "nvcc CUDA {} and torch CUDA {} have different major versions".format(
+                nvcc_cuda, torch_cuda
+            )
+        )
+    return {
+        "torch_release": torch_release,
+        "torch_cuda": torch_cuda,
+        "nvcc_cuda": nvcc_cuda,
     }
 
 
@@ -140,12 +178,14 @@ def collect_environment(source_root: Path) -> Dict[str, Any]:
         raise ContractError("Stage 0 requires Python 3.9; found {}".format(platform.python_version()))
     import torch
 
-    if torch.__version__ != "2.2.2+cu118":
-        raise ContractError("Stage 0 requires torch 2.2.2+cu118; found {}".format(torch.__version__))
-    if torch.version.cuda != "11.8":
-        raise ContractError("Stage 0 requires torch CUDA 11.8; found {}".format(torch.version.cuda))
     if not torch.cuda.is_available():
         raise ContractError("torch.cuda.is_available() is false")
+    nvcc = _run_text(["nvcc", "--version"])
+    if nvcc["returncode"] != 0:
+        raise ContractError("nvcc --version failed: {}".format(nvcc["stderr"]))
+    runtime_versions = validate_runtime_versions(
+        torch.__version__, torch.version.cuda, nvcc["stdout"]
+    )
 
     extension_names = (
         "diff_gaussian_rasterization",
@@ -179,9 +219,6 @@ def collect_environment(source_root: Path) -> Dict[str, Any]:
 
     device = torch.cuda.current_device()
     properties = torch.cuda.get_device_properties(device)
-    nvcc = _run_text(["nvcc", "--version"])
-    if nvcc["returncode"] != 0:
-        raise ContractError("nvcc --version failed: {}".format(nvcc["stderr"]))
     nvidia_smi = _run_text(
         [
             "nvidia-smi",
@@ -229,6 +266,7 @@ def collect_environment(source_root: Path) -> Dict[str, Any]:
             "total_memory_bytes": properties.total_memory,
         },
         "nvcc": nvcc,
+        "runtime_compatibility": runtime_versions,
         "nvidia_smi": nvidia_smi,
         "packages": packages,
         "extensions": extensions,

@@ -5,7 +5,28 @@ from pathlib import Path
 
 from PIL import Image
 
-from scripts.s0_baseline_contract import build_parser, main
+from scripts.s0_baseline_contract import build_parser, main, validate_runtime_versions
+
+
+class RuntimeVersionTests(unittest.TestCase):
+    def test_accepts_server_torch_cu121_with_matching_cuda_toolkit(self):
+        runtime = validate_runtime_versions(
+            "2.2.2+cu121",
+            "12.1",
+            "Cuda compilation tools, release 12.1, V12.1.105",
+        )
+
+        self.assertEqual(runtime["torch_release"], "2.2.2")
+        self.assertEqual(runtime["torch_cuda"], "12.1")
+        self.assertEqual(runtime["nvcc_cuda"], "12.1")
+
+    def test_rejects_cuda_toolkit_major_mismatch(self):
+        with self.assertRaisesRegex(ValueError, "major version"):
+            validate_runtime_versions(
+                "2.2.2+cu121",
+                "12.1",
+                "Cuda compilation tools, release 11.8, V11.8.89",
+            )
 
 
 class PrepareCliTests(unittest.TestCase):
