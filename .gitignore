@@ -5,6 +5,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .cache/
+.ipynb_checkpoints/
+__pypackages__/
 .coverage
 htmlcov/
 
@@ -17,6 +19,7 @@ env/
 # Native/CUDA/Python extension build artifacts
 build/
 dist/
+.eggs/
 *.egg-info/
 submodules/*/build/
 submodules/*/*.egg-info/
@@ -45,7 +48,11 @@ output/
 outputs/
 runs/
 wandb/
+tensorboard/
 logs/
+*.log
+events.out.tfevents.*
+nohup.out
 checkpoints/
 viewer_out/
 tmp/
@@ -54,6 +61,9 @@ datasets/
 *.pth
 *.pt
 *.ckpt
+*.nsys-rep
+*.ncu-rep
+*.qdrep
 
 # Local helper scripts generated during experiments
 benchmark_render.py
@@ -66,6 +76,10 @@ DRK_CUDA_OPTIMIZATION.md
 # Editor and operating-system metadata
 .vscode/
 .idea/
+.vs/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 desktop.ini
