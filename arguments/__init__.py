@@ -1,0 +1,248 @@
+#
+# Copyright (C) 2023, Inria
+# GRAPHDECO research group, https://team.inria.fr/graphdeco
+# All rights reserved.
+#
+# This software is free for non-commercial, research and evaluation use 
+# under the terms of the LICENSE.md file.
+#
+# For inquiries contact  george.drettakis@inria.fr
+#
+
+from argparse import ArgumentParser, Namespace
+import sys
+import os
+
+class GroupParams:
+    pass
+
+class ParamGroup:
+    def __init__(self, parser: ArgumentParser, name : str, fill_none = False):
+        group = parser.add_argument_group(name)
+        for key, value in vars(self).items():
+            shorthand = False
+            if key.startswith("_"):
+                shorthand = True
+                key = key[1:]
+            t = type(value)
+            value = value if not fill_none else None 
+            if shorthand:
+                if t == bool:
+                    group.add_argument("--" + key, ("-" + key[0:1]), default=value, action="store_true")
+                else:
+                    group.add_argument("--" + key, ("-" + key[0:1]), default=value, type=t)
+            else:
+                if t == bool:
+                    group.add_argument("--" + key, default=value, action="store_true")
+                else:
+                    group.add_argument("--" + key, default=value, type=t)
+
+    def extract(self, args):
+        group = GroupParams()
+        for arg in vars(args).items():
+            if arg[0] in vars(self) or ("_" + arg[0]) in vars(self):
+                setattr(group, arg[0], arg[1])
+        return group
+
+class ModelParams(ParamGroup): 
+    def __init__(self, parser, sentinel=False):
+        self.sh_degree = 3
+        self._source_path = ""
+        self._model_path = ""
+        self._images = "images"
+        self._resolution = -1
+        self._white_background = False
+        self.data_device = "cuda"
+        self.eval = False
+        self.val_as_train = False
+        self.gs_type = 'GS'
+        self.metric_masked = False
+        super().__init__(parser, "Loading Parameters", sentinel)
+
+    def extract(self, args):
+        g = super().extract(args)
+        g.source_path = os.path.abspath(g.source_path)
+        return g
+
+class PipelineParams(ParamGroup):
+    def __init__(self, parser):
+        self.convert_SHs_python = False
+        self.compute_cov3D_python = False
+        self.debug = False
+        super().__init__(parser, "Pipeline Parameters")
+
+class OptimizationParams(ParamGroup):
+    def __init__(self, parser):
+        self.iterations = 35_000
+        self.position_lr_init = 0.00016
+        self.position_lr_final = 0.0000016
+        self.position_lr_delay_mult = 0.01
+        self.position_lr_max_steps = 30_000
+        self.feature_latent_lr = 0.0025
+        self.feature_lr = 0.0025
+        self.opacity_lr = 0.05
+        self.scaling_lr = 0.005
+        self.rotation_lr = 0.001
+        self.refl_lr = 0.0001
+        self.envmap_cubemap_lr = 0.05
+        self.nerf_color_lr = 1e-4
+        self.percent_dense = 0.01
+        self.lambda_dssim = 0.2
+        self.lambda_im_laplace = 0.0
+        self.densification_interval = 100
+        self.opacity_reset_interval = 3000
+        self.densify_from_iter = 500
+        self.densify_until_iter = 15_000
+        self.densify_grad_threshold = 0.0005
+        self.random_background = False
+
+        # Args for DRK
+        self.cache_sort = False
+        self.tile_culling = False
+        self.skip_densify_stats_after = True
+        self.opacity_drk_lr = 1e-2
+        self.kernel_K = 8
+        self.acutance_drk = 5e-3
+        self.acutance_drk_final = 5e-5
+        self.thetas_drk = 1e-2
+        self.thetas_drk_final = 1e-4
+        self.scaling_drk_lr = 1e-2
+        self.scaling_drk_lr_final = 1e-4
+        self.l1l2rates_drk = 5e-3
+        self.l1l2rates_drk_final = 5e-5
+        self.rotation_drk_lr = 1e-2
+        self.rotation_drk_lr_final = 1e-4
+        self.percent_drk_dense = 1e-3
+        self.drk_init_scale_multiplier = 1.0
+        self.drk_init_scale_quantile = 0.5
+        self.kernel_density = "dense"
+        self.is_unbounded = False
+        self.no_recenter = False
+        self.no_resetopacity = False
+        self.keep_manual_densification_interval = False
+        self.keep_manual_opacity_reset_interval = False
+        self.use_mcmc = False
+        self.mcmc_strategy = "replace"
+        self.mcmc_start_iter = -1
+        self.mcmc_end_iter = -1
+        self.mcmc_cap_max = -1
+        self.mcmc_growth_rate = 1.05
+        self.mcmc_grad_weight = 1.5   # default ON: bias MCMC clone/relocate toward high abs-grad (under-reconstructed) prims (AbsGS-style); +0.45 dB on T&T at equal prim budget. Set 0 for vanilla opacity-only MCMC.
+        self.mcmc_scale_weight = 0.5  # default ON: additionally bias toward large primitives (split blurry distant coverage)
+        self.mcmc_min_opacity = 0.005
+        self.mcmc_noise_lr = 0.0
+        self.mcmc_opacity_reg = 0.0
+        self.mcmc_scale_reg = 0.0
+        self.mcmc_prune_min_opacity = 0.0
+        self.mcmc_prune_score = "opacity"
+        self.lambda_alpha_mask = 0.0
+        self.alpha_mask_from_iter = -1
+        self.alpha_mask_until_iter = -1
+        self.alpha_mask_warmup = 0
+        self.final_prune_target = -1
+        self.final_prune_at_iter = -1
+        self.final_prune_score = "visible_area_sharp"
+        self.final_prune_split = "train"
+
+        # Large-primitive pruning + one-sided size regularization (kill non-physical big floaters)
+        self.prune_big_screen_px = 0.0
+        self.prune_big_world_scale_k = 0.0
+        self.prune_big_from_iter = 0
+        self.prune_big_combine = 'or'
+        self.prune_big_interval = 200
+        self.prune_big_ws_frac = 0.1
+        self.lambda_scale_size_reg = 0.0
+        self.scale_size_reg_target_k = 0.0
+
+        # Joint camera pose refinement (learned bundle adjustment; COLMAP unavailable)
+        self.pose_refine = False
+        self.pose_lr = 1e-3
+        self.pose_refine_from_iter = 300
+        self.pose_refine_until_iter = -1
+
+        # Multi-scale anti-aliasing loss
+        self.lambda_multiscale = 0.0
+        self.lambda_multiscale_ssim = 0.0
+        self.multiscale_scales = "0.5,0.25"
+        self.train_focus_cameras = ""
+        self.train_focus_weight = 1.0
+        self.lambda_sh_rest_l2 = 0.0
+        self.sh_rest_l2_from_iter = -1
+        self.sh_rest_l2_until_iter = -1
+        # Opacity regularization for floater suppression
+        self.lambda_opacity_reg = 0.0
+        self.opacity_reg_from_iter = 500
+        # Depth distortion loss for reducing floaters
+        self.lambda_depth_distortion = 0.0
+
+        # Progressive DRK shape targets for sharp polygonal extraction.
+        self.lambda_acutance_target = 0.0
+        self.target_acutance = 1.0
+        self.target_acutance_start = -1.0
+        self.acutance_target_from_iter = 15_000
+        self.acutance_target_until_iter = -1
+        self.acutance_target_warmup = 5_000
+        self.acutance_target_ramp = 0
+        self.lambda_l1l2_target = 0.0
+        self.target_l1l2_rate = 1.0
+        self.target_l1l2_rate_start = -1.0
+        self.l1l2_target_from_iter = 15_000
+        self.l1l2_target_until_iter = -1
+        self.l1l2_target_warmup = 5_000
+        self.l1l2_target_ramp = 0
+        self.lambda_opacity_target = 0.0
+        self.target_opacity = 1.0
+        self.opacity_target_from_iter = 15_000
+        self.opacity_target_until_iter = -1
+        self.opacity_target_warmup = 5_000
+        self.opacity_target_l1l2_gate = 0.0
+        self.opacity_target_l1l2_gate_width = 0.05
+        self.target_opacity_start = -1.0
+        self.opacity_target_ramp = 0
+        self.opacity_binarize = 0.0          # >0 => drive each prim's opacity to nearest extreme (0/1) about this threshold
+        self.opacity_prune_thresh = 0.0      # >0 => periodically prune prims with opacity < this (the binarized-to-0 ones)
+        self.opacity_prune_interval = 500
+        self.opacity_prune_from_iter = 0     # only start opacity pruning after this iter (avoid dumping prims all at once)
+        self.train_force_acutance = -1.0
+        self.train_force_l1l2_rate = -1.0
+        self.train_force_opacity = -1.0
+        self.train_render_sh_degree = -1
+        self.train_postprocess_shift_x = 0.0
+        self.train_postprocess_shift_y = 0.0
+
+        self.position_lr_init_small = 1.6e-4
+        self.position_lr_final_small = 1.6e-6
+        self.im_laplace_scale_factor = 0.2
+        
+        self.specified_acu_range = False
+        self.specified_acu_max = 0.75
+        self.specified_acu_min = -.25
+
+        self.pure_train = False
+        super().__init__(parser, "Optimization Parameters")
+
+def get_combined_args(parser : ArgumentParser):
+    cmdlne_string = sys.argv[1:]
+    cfgfile_string = "Namespace()"
+    args_cmdline = parser.parse_args(cmdlne_string)
+
+    model_path_list = args_cmdline.model_path.split('/')
+    model_path_list[-1] += f'_{args_cmdline.gs_type}'
+    args_cmdline.model_path = '/'.join(model_path_list)
+
+    try:
+        cfgfilepath = os.path.join(args_cmdline.model_path, "cfg_args")
+        print("Looking for config file in", cfgfilepath)
+        with open(cfgfilepath) as cfg_file:
+            print("Config file found: {}".format(cfgfilepath))
+            cfgfile_string = cfg_file.read()
+    except TypeError:
+        print("Config file not found at")
+        pass
+    args_cfgfile = eval(cfgfile_string)
+
+    merged_dict = vars(args_cfgfile).copy()
+    for k,v in vars(args_cmdline).items():
+        if v != None:
+            merged_dict[k] = v
+    return Namespace(**merged_dict)

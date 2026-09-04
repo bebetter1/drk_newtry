@@ -1,0 +1,71 @@
+# Python/runtime cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+
+# Local Python environments
+.venv/
+venv/
+env/
+.conda/
+
+# Native/CUDA/Python extension build artifacts
+build/
+dist/
+*.egg-info/
+submodules/*/build/
+submodules/*/*.egg-info/
+*.o
+*.so
+*.pyd
+*.dll
+*.dylib
+*.a
+*.lib
+*.exp
+*.ptx
+*.cubin
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Python extension binaries placed inside source packages
+submodules/*/*/_C.cpython-*.so
+
+# Local benchmark/training outputs and downloaded data
+family_compare_*/
+family_compare_cuda_opt/
+output/
+outputs/
+runs/
+wandb/
+logs/
+checkpoints/
+viewer_out/
+tmp/
+data/
+datasets/
+*.pth
+*.pt
+*.ckpt
+
+# Local helper scripts generated during experiments
+benchmark_render.py
+prune_checkpoint.py
+scripts/family_compare.py
+
+# Local notes generated during optimization
+DRK_CUDA_OPTIMIZATION.md
+
+# Editor and operating-system metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
